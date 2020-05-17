@@ -1,0 +1,82 @@
+#jinja2: lstrip_blocks: "True", trim_blocks: "False"
+resource "aws_key_pair" "deployer" {
+  key_name   = "{{ keypairs.deployer.name }}"
+  public_key = "{{ lookup('file', deployer_pub_key) }}"
+}
+
+resource "aws_security_group" "allow_ssh" {
+
+  depends_on = [aws_vpc.main]
+
+  name        = "{{ security_groups.ssh.name }}"
+  description = "{{ security_groups.ssh.description }}"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "{{ security_groups.ssh.description }}"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [{% for subnet, property in subnets.items() %}"{{ property.cidr }}"{% if not loop.last %}, {% endif %}{% endfor %}, "{{ office_ip }}"]
+  }
+
+  egress {
+    description = "{{ security_groups.ssh.description }}"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [{% for subnet, property in subnets.items() %}"{{ property.cidr }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+  }
+
+  egress {
+    description = "{{ security_groups.ssh.description }}"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    description = "{{ security_groups.ssh.description }}"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "{{ security_groups.ssh.name }}"
+  }
+
+}
+
+{% for instance, property in ec2.items() %}
+{% set public_instance = property.public %}
+  {% for count_index in range(property.count) %}
+  {% set count = "0" ~ (count_index|int + 1) %}
+resource "aws_instance" "{{ instance }}-{{ count }}" {
+
+  depends_on = [aws_vpc.main]
+
+  ami             = "{{ property.ami }}"
+  instance_type   = "{{ property.instance_type }}"
+  key_name        = "{{ keypairs.deployer.name }}"
+  user_data       = file("{{ project.workspace.cloud_init }}/defaults.cfg")
+
+  vpc_security_group_ids = ["${aws_security_group.allow_ssh.id}"]
+  subnet_id              = {% for subnet, subnet_property in subnets.items() %}{% if subnet_property.public|bool == public_instance|bool %}aws_subnet.{{ subnet_property.name }}.id{% endif %}{% endfor %}
+
+  root_block_device {
+    volume_size           = "{{ property.volumes.root.size }}"
+    volume_type           = "{{ property.volumes.root.type }}"
+    delete_on_termination = {{ property.volumes.root.delete_on_termination }}
+  }
+
+  tags = {
+    Name    = "{{ property.name }}-{{ count }}"
+    Project = "{{ project.id }}-{{ project.name }}"
+  }
+
+}
+  {% endfor %}
+{% endfor %}

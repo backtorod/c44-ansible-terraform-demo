@@ -1,0 +1,33 @@
+---
+
+#
+# TASKS EXECUTED LOCALLY
+#
+- name: "[INFO] DEMO FOR TASKS EXECUTED LOCALLY"
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - defaults/main.yml
+
+  tasks:
+
+    - include_tasks: tasks/init.yml
+    - include_tasks: tasks/provision.yml
+
+    - name: pause 30s while EC2 instances are fully up
+      pause:
+        seconds: 30
+
+#
+# TASKS EXECUTED ON REMOTE HOSTS
+#
+- name: "[INFO] DEMO FOR TASKS EXECUTED ON REMOTE HOSTS"
+  hosts: "{{ inventory.name | default('all') }}"
+  become: true
+  gather_facts: false
+  vars_files:
+    - defaults/main.yml
+
+  tasks:
+
+    - include_tasks: tasks/configure.yml

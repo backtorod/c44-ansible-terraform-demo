@@ -1,0 +1,8 @@
+terraform {
+  required_version = ">= {{ terraform.baseline_version }}"
+}
+
+provider "aws" {
+  version = ">={{ aws.baseline_cli_version }}"
+  region  = "{{ aws.region }}"
+}

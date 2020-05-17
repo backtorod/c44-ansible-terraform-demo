@@ -1,0 +1,10 @@
+---
+
+- name: terraform plan
+  shell: |
+    terraform plan -no-color
+  args:
+    chdir: "{{ project.workspace.terraform }}"
+  register: _terraform_plan
+
+- debug: var=_terraform_plan

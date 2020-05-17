@@ -1,0 +1,10 @@
+---
+
+- name: create resources
+  shell: |
+    terraform apply -auto-approve -no-color
+  args:
+    chdir: "{{ project.workspace.terraform }}"
+  register: _terraform_apply
+
+- debug: var=_terraform_apply

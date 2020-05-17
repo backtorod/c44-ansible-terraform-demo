@@ -1,0 +1,64 @@
+#jinja2: lstrip_blocks: "True", trim_blocks: "False"
+resource "aws_vpc" "main" {
+
+  cidr_block           = "{{ vpc.cidr }}"
+  instance_tenancy     = "{{ vpc.instance_tenancy }}"
+  enable_dns_hostnames = {{ vpc.enable_dns_hostnames }}
+
+  tags = {
+    Name = "{{ vpc.name }}"
+  }
+
+}
+
+resource "aws_internet_gateway" "main" {
+
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "{{ vpc.gateway }}"
+  }
+
+}
+
+resource "aws_route_table" "main" {
+
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  tags = {
+    Name = "{{ vpc.route_table }}"
+  }
+
+}
+
+{% for subnet, property in subnets.items() %}
+resource "aws_subnet" "{{ property.name }}" {
+
+  depends_on = [aws_vpc.main]
+
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "{{ property.cidr }}"
+
+  {% if property.public|default(false)|bool %}
+  map_public_ip_on_launch = true
+  {% else %}
+  map_public_ip_on_launch = false
+  {% endif %}
+
+  tags = {
+    Name = "{{ property.name }}"
+  }
+
+}
+
+resource "aws_route_table_association" "{{ property.name }}" {
+  subnet_id      = aws_subnet.{{ property.name }}.id
+  route_table_id = aws_route_table.main.id
+}
+
+{% endfor %}

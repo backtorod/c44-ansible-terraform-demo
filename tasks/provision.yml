@@ -1,0 +1,26 @@
+---
+
+- block:
+
+    - include_tasks: plan.yml
+
+  when: enable_plan|default(false)|bool
+
+- block:
+
+    - include_tasks: plan.yml
+    - include_tasks: apply.yml
+
+  when: enable_apply|default(false)|bool
+
+- block:
+
+    - include_tasks: destroy.yml
+
+  when: enable_destroy|default(false)|bool
+
+- block:
+
+    - include_tasks: inventory.yml
+
+  when: enable_inventory|default(false)|bool

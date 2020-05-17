@@ -1,0 +1,10 @@
+---
+
+- name: destroy resources
+  shell: |
+    terraform destroy -auto-approve -no-color
+  args:
+    chdir: "{{ project.workspace.terraform }}"
+  register: _terraform_destroy
+
+- debug: var=_terraform_destroy

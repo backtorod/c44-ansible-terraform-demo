@@ -1,0 +1,22 @@
+---
+
+- name: fetch ec2 ip addresses for dynamic inventory
+  shell: |
+    terraform refresh >/dev/null
+    terraform output -json | jq -r '.[] | .value[] | .[]'
+  args:
+    chdir: "{{ project.workspace.terraform }}"
+  register: _ec2_ip_addresses
+
+- debug: var=_ec2_ip_addresses
+
+- name: "adding ec2 instance to dynamic inventory group"
+  add_host:
+    hostname: "{{ item }}"
+    groups: "{{ inventory.name }}"
+    ansible_connection: "{{ inventory.ansible_connection }}"
+    ansible_user: "{{ inventory.ansible_user }}"
+    ansible_port: "{{ inventory.ansible_port }}"
+    ansible_ssh_private_key_file: "{{ inventory.ansible_ssh_private_key_file }}"
+  with_items: "{{ _ec2_ip_addresses.stdout_lines }}"
+

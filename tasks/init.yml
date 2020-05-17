@@ -1,0 +1,139 @@
+---
+
+- block:
+
+    - name: cleanup workspace
+      file:
+        path: "{{ item.value }}"
+        state: absent
+      with_dict: "{{ project.workspace }}"
+
+    - name: prepare workspace
+      file:
+        path: "{{ item.value }}"
+        state: directory
+      with_dict: "{{ project.workspace }}"
+
+    - name: validate if terraform s3 state bucket is created
+      shell: |
+        aws s3 ls | grep {{ terraform.backend.bucket }}
+      register: _check_state_bucket
+      failed_when: _check_state_bucket.stderr != ""
+
+    - name: create terraform s3 state bucket if not created
+      shell: |
+        aws s3 mb s3://{{ terraform.backend.bucket }}
+      register: _create_state_bucket
+      failed_when: _create_state_bucket.stderr != ""
+      when: |
+        _check_state_bucket.stdout == "" and
+        _check_state_bucket.stderr == ""
+
+- block:
+
+    - name: create keypair for ssh connectivity (overwrite if key exists)
+      openssh_keypair:
+        path: "{{ keypairs.deployer.file }}"
+        type: "{{ keypairs.deployer.type }}"
+        size: "{{ keypairs.deployer.bits | int }}"
+        force: true
+
+    - set_fact:
+        deployer_pub_key: "{{ keypairs.deployer.file }}.pub"
+
+    - name: push deployer private keypair to s3 bucket
+      shell: |
+        aws s3 cp {{ playbook_dir }}/{{ project.id }}-deployer s3://{{ terraform.backend.bucket }}/
+        aws s3 cp {{ playbook_dir }}/{{ project.id }}-deployer.pub s3://{{ terraform.backend.bucket }}/
+      when: not enable_plan|default(false)|bool
+
+    - name: fetch office ip address for ssh access on ec2 instances
+      shell: |
+        curl ipinfo.io/ip
+      register: _office_ip
+
+    - set_fact:
+        office_ip: "{{ _office_ip.stdout }}/32"
+
+    - name: template resources ( apply|plan )
+      template:
+        src: "templates/terraform/{{ item }}.j2"
+        dest: "{{ project.workspace.terraform }}/{{ item }}"
+      with_items: "{{ templates.terraform.apply }}"
+
+    - name: template cloud-init resources
+      template:
+        src: "templates/cloud_init/{{ item }}.j2"
+        dest: "{{ project.workspace.cloud_init }}/{{ item }}"
+      with_items: "{{ templates.cloud_init }}"
+
+  when: enable_apply|default(false)|bool or enable_plan|default(false)|bool
+
+- block:
+
+    - name: template resources ( destroy )
+      template:
+        src: "templates/terraform/{{ item }}.j2"
+        dest: "{{ project.workspace.terraform }}/{{ item }}"
+      with_items: "{{ templates.terraform.destroy }}"
+
+  when: enable_destroy|default(false)|bool
+
+- block:
+
+    - name: template resources ( configure )
+      template:
+        src: "templates/terraform/{{ item }}.j2"
+        dest: "{{ project.workspace.terraform }}/{{ item }}"
+      with_items: "{{ templates.terraform.configure }}"
+
+    - block:
+
+        - name: pull deployer private key ( if infrastructure already provisioned )
+          shell: |
+            aws s3 cp s3://{{ terraform.backend.bucket }}/{{ project.id }}-deployer {{ playbook_dir }}/{{ project.id }}-deployer
+
+        - name: set proper permissions for private key
+          file:
+            path: "{{ playbook_dir }}/{{ project.id }}-deployer"
+            mode: 0600
+
+      when: |
+        _check_state_bucket.stdout != "" and
+        _check_state_bucket.stderr == ""
+
+  when: enable_configure|default(false)|bool
+
+- name: terraform fmt (syntax)
+  shell: |
+    terraform fmt -no-color
+  args:
+    chdir: "{{ project.workspace.terraform }}"
+  register: _terraform_fmt
+
+- debug: var=_terraform_fmt
+
+- name: terraform init
+  shell: |
+    terraform init -no-color
+  args:
+    chdir: "{{ project.workspace.terraform }}"
+  register: _terraform_init
+
+- debug: var=_terraform_init
+
+- block:
+
+    - name: terraform validate
+      shell: |
+        terraform validate -no-color
+      args:
+        chdir: "{{ project.workspace.terraform }}"
+      register: _terraform_validate
+
+    - debug: var=_terraform_validate
+
+  when: |
+    enable_plan|default(false)|bool or
+    enable_apply|default(false)|bool or
+    enable_destroy|default(false)|bool
