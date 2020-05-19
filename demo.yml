@@ -17,6 +17,7 @@
     - name: pause 30s while EC2 instances are fully up
       pause:
         seconds: 30
+      when: enable_apply|default(false)|bool
 
 #
 # TASKS EXECUTED ON REMOTE HOSTS
